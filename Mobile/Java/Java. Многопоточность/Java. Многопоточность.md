@@ -92,9 +92,163 @@ for (Thread thread : threads) {
 System.out.println(c.x); // может выдать 2millions, 3millions, 10millions, 0.5millions.
 ```
 
+Есть неправильный вопрос - когда завершилась некоторая операция (например, присвоение переменной А значения 1) в многопоточной программе? На самом деле это неверный вопрос - нас должен интересовать только вопрос о том, когда мы будем видеть результат этой операции, причем только для конкретного треда, через который мы смотрим на эту операцию.
+
+Понятия из модели памяти Java:
+
+__Видимость (visibility)__
+* Это ситуация, когда результат операции write X, выполеннной в потоке A, виден в операции read X, выполненной в потоке B
+* Видимость определена только для конкретных потоков A и B, нет «глобальной видимости»
+
+__Порядок (ordering)__
+* A happens before B (A hb B), если все записи, выполненные до точки A (включительно), видны в любой операции чтения после точки B (включительно)
+* A hb B, B hb C -> A hb C
+
+Простые правила happens before
+* Для двух операций A и B в одном потоке A hb B, если A раньше B в тексте программы (program order).
+* Завершение конструктора объекта X hb начало finalize X
+* Вызов thread.start() hb первое действие в потоке thread
+* Последнее действие в потоке thread hb thread.join()
+* Инициализация объекта по умолчанию (напр., заполнение массива нулями) hb любое другое действие
+
+Для ключевого слова `synchronized`
+
+* Если мы синхронизируемся по одному объекту даже из разных потоков, то между любыми секциями синхронизациями synchronized А и В установлен полный порядок (total order)
+* Завершение синхронизации (monitorexit) hb начало последующей синхронизации по тому же объекту (monitorenter)
+
 ### Ключевое слово volatile
 
 Указывает на то, что поле синхронизировано для нескольких потоков, и каждый из них не будет создавать локальную копию, а будет работать с оригинальными данными.
+
+* Запись и чтение в поле, объявленное `volatile`, называется volatile read, volatile write
+* Речь идёт непосредственно о записи, а не о записи членов/элементов массива
+
+```java
+volatile int[] x;
+x = new int[10]; // volatile write
+x[0] = 1; // volatile read, plain write
+```
+
+* volatile write hb volatile read, который прочитал это значение
+
+```java
+class Foo { int x = 0; volatile int y = 0; }
+for(int i=0; i<100000; i++) {
+    Foo foo = new Foo();
+    Thread t1 = new Thread(() -> {
+        foo.x = 1;
+        foo.y = 1;
+    });
+    Thread t2 = new Thread(() -> {
+        while (foo.y != 1) ;
+        System.out.println(foo.x); // благодаря правилу happens before вы можете быть 
+		// уверены, что foo.x вернет 1
+    });
+    t1.start();t2.start();
+    t1.join(); t2.join();
+}
+```
+
+### Паттерн Singleton и многопоточность
+
+1) Вариант с synchronized
+
+```java
+public class Container {
+    private static Container INSTANCE;
+
+    public int x = 1;
+
+    static synchronized Container getInstance() {
+        if (INSTANCE == null) {
+            INSTANCE = new Container();
+        }
+        return INSTANCE;
+    }
+}
+```
+
+Но здесь проблема производительности, т.к. мб много операций с монитором при частых getInstance() из разных потоков - будет постоянная блокировка потоков.
+
+Решение - double checked locking.
+
+```java
+public class Container {
+    private static volatile Container INSTANCE; // ATTENTION to VOLATILE!!
+    int x = 1;
+    static Container getInstance() {
+         if (INSTANCE == null) {
+             synchronized (Container.class) {
+                 if (INSTANCE == null) {
+                     INSTANCE = new Container();
+                 }
+             }
+         }
+         return INSTANCE;
+    }
+}
+```
+
+### Ключевое слово final и многопоточность
+
+* Если поток увидел ссылку на объект, и она не утекала из конструктора, то он гарантированно увидит все final-поля, записанные в конструкторе
+* Неизменяемые объекты – друзья многопоточности!
+
+---
+
+### Dead lock
+
+Возникает при 4 условиях
+
+* Взаимное исключение (неразделяемые ресурсы)
+* Минимум два ресурса (один держим, один просим)
+* Ресурс освобождается только добровольно тем, кто его держит
+* Направленный граф ожидания имеет цикл
+
+Пример возникновения дедлока - 2 очереди, хотим вытащить элемент из одной и поместить в другую. Тут он может возникнуть, т.к. операция взятия блокировки не атомарна, а здесь их две.
+
+```java
+static void transfer(Queue<String> in, Queue<String> out) {
+  synchronized (in) {
+    synchronized (out) {
+      String res = in.poll();
+      if (res != null) {
+        out.add(res);
+      }
+    }
+  }
+}
+```
+
+### Live lock
+
+* Потоки постоянно меняют состояние, но прогресса нет
+
+---
+
+### Ожидание условия
+
+Если нужно подождать, пока не выполниться некоторое условие и продолжить работу
+
+```java
+boolean content = false;
+
+// тот, кто ожидает выполнения условия
+public synchronized void waitForContent() {
+  while(!content) {
+    try {
+      wait();
+    } catch (InterruptedException e) { } 
+  }
+  System.out.println("Content has been arrived");
+}
+
+// тот, кто делает выполнение условия
+public synchronized void deliverContent() {
+  content = true;
+  notifyAll();
+}
+```
 
 ---
 
