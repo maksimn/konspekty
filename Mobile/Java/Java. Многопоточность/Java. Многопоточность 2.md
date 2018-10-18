@@ -94,3 +94,88 @@ int getAndIncrement(AtomicInteger i) {
 ```
 
 А что, если мы хотим атомарно обновить несколько значений?
+
+Пусть у нас задача - дана двумерная точка, которую нужно повернуть на 90 градусов относительно начала координат.
+
+Решение - использовать  final-объект.
+
+```java
+public class AtomicPoint {
+  private static class Point {
+    final int x, y;
+
+    private Point(int x, int y) {
+      this.x = x;
+      this.y = y;
+    }
+
+    Point rotateClockwise() {
+      return new Point(y, -x);
+    }
+  }
+
+  private final AtomicReference<Point> pt = new AtomicReference<>(new Point(0, 1));
+
+  public void rotateClockwise() {
+    pt.updateAndGet(Point::rotateClockwise);
+  }
+}
+```
+
+Способы параллельного запуска задач для тестирования (например, протестировать, что действие в `Doer.doOnce()` было выполнено только 1 раз).
+
+Например, использовать `CountdownLatch` - это счетчик: ожидание `await()` работает, если он больше нуля, если его опустить до нуля (`countDown()`), то код продолжится.
+
+```java
+final int THREADS = Runtime.getRuntime().availableProcessors();
+Doer doer = new Doer();
+CountDownLatch latch = new CountDownLatch(1);
+AtomicInteger count = new AtomicInteger();
+Runnable r = () -> {
+  try {
+    latch.await();
+  } catch (InterruptedException ignored) { }
+  doer.doOnce(count::incrementAndGet);
+};
+latch.countDown();
+List<Thread> threads = Stream.generate(() -> new Thread(r))
+  .limit(THREADS).peek(Thread::start)
+  .collect(Collectors.toList());
+for (Thread thread : threads) {
+  thread.join();
+}
+
+if (count.get() != 1) {
+  System.out.println("oops"); // печать, есть дуер вызвался больше 1 раза
+}
+```
+
+Иногда все же будет печатать сообщение.
+
+### CyclicBarrier
+
+Ожидание до тех пор, пока все потоки не прибегут в данную точку.
+
+### Phaser
+
+Есть работа, разделенная на этапы и вы хотите, чтобы после окончания этапа все потоки дожидались друг друга и начинали следующий. Число потоков для каждого этапа можно менять.
+
+### Semaphore
+
+Семафор и есть.
+
+### Exchanger 
+
+Для двух тредов, которые в какой-то момент должны поменяться данными между собой. У каждого из них есть переменная одного типа. В какой-то момент в одном треде вы дошли до точки и сказали -- "обменяться". Происходит ожидание. Когда другой из тредов дошел до точки, сказали "обменяться" - у вас сразу значения обменялись и вы пошли дальше в обоих потоках.
+
+---
+
+Другие способы создания потоков и их синхронизации друг с другом
+
+### Executor
+
+Процесс создания тредов вы отдаете некоторой сущности, а ей вы только отдаете _задачи_. На каждую переданную в Executor задачу он возвращает объект Future. Это результат вашей задачи, который пока что может быть неизвестен. Можно его дождаться.
+
+### CompletableFuture
+
+Как Executor, но еще проще для использования.
