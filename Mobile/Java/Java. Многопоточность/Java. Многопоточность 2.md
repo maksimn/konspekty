@@ -179,3 +179,57 @@ if (count.get() != 1) {
 ### CompletableFuture
 
 Как Executor, но еще проще для использования.
+
+__Пример__ - параллельное вычисление  C_n_k через CompletableFuture.
+
+---
+
+## Блокирующиe примитивы
+
+### ReentrantLock
+
+Прокачанная версия synchronized.
+
+Например, потокобезопасный список над ArrayList
+
+```java
+class ThreadSafeList {
+  private final List<String> list = new ArrayList<>();
+  private final ReentrantLock lock = new ReentrantLock(true);
+  String get(int i) {
+    lock.lock();
+    try { return list.get(i); }
+    finally { lock.unlock(); }
+  }
+  void add(String str) { 
+    lock.lock();
+    try { list.add(str); }
+    finally { lock.unlock(); }
+  }
+}
+```
+
+Есть другие методы, например, с таймаутом взятия блокировки.
+
+`ReentrantReadWriteLock` - лучший вариант для данного примера. Способ применения подобен.
+
+---
+
+## Многопоточные коллекции
+
+### Неблокирующие
+
+* `ConcurrentLinkedQueue` (LinkedList)
+* `ConcurrentLinkedDeque` (LinkedList/ArrayDeque)
+* `CopyOnWriteArrayList` (ArrayList)
+* `CopyOnWriteArraySet`
+* `ConcurrentHashMap` (+ newKeySet()) (HashMap/HashSet)
+* `ConcurrentSkipListMap` (TreeMap)
+* `ConcurrentSkipListSet` (TreeSet)
+
+### Блокирующие
+
+* `SynchronousQueue` (без памяти, одна вставка = одно удаление)
+* `ArrayBlockingQueue` (фиксированный размер)
+* `LinkedBlockingDeque` (размер может быть не фиксирован)
+* `PriorityBlockingQueue` (PriorityQueue x ArrayBlockingQueue)
