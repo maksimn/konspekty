@@ -190,7 +190,7 @@ public class MyActivity extends Activity {
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 	    super.onCreate(savedInstanceState);
-		Scope scope = openScopes(getApplication(),
+		Scope scope = Toothpick.openScopes(getApplication(),
 		                         PresenterSingleton.class,
                                  this);
 		Toothpick.inject(this, scope);
